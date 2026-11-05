@@ -51,52 +51,133 @@ function saveSong(song) {
     store.put(song);
 }
 
+
 async function syncSongsFromServer() {
 
     if (!db) return;
 
     try {
 
-        console.log("Checking server for new songs...");
+        console.log("Checking server for songs...");
 
-        const response = await fetch(API_URL);
+        const response = await fetch(API_URL, {
+            cache: "no-store"
+        });
 
         if (!response.ok) {
             throw new Error("Could not connect to Django server");
         }
 
-        const serverSongs = await response.json();
+        const data = await response.json();
 
-        // Get songs previously deleted from mobile
-        const deletedTransaction = db.transaction("deletedSongs", "readonly");
-        const deletedRequest = deletedTransaction.objectStore("deletedSongs").getAll();
+        const serverSongs = Array.isArray(data)
+            ? data
+            : data.results;
 
-        const deletedSongs = await new Promise((resolve, reject) => {
-            deletedRequest.onsuccess = () => resolve(deletedRequest.result);
-            deletedRequest.onerror = () => reject(deletedRequest.error);
+        if (!Array.isArray(serverSongs)) {
+            throw new Error("Invalid server song list");
+        }
+
+        // Get all songs currently saved on mobile
+        const transaction = db.transaction("songs", "readonly");
+        const request = transaction.objectStore("songs").getAll();
+
+        const mobileSongs = await new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
         });
 
-        const deletedIds = deletedSongs.map(song => song.server_id);
+        // Get all IDs currently present on the server
+        const serverIds = new Set(
+            serverSongs.map(song => Number(song.id))
+        );
 
-        for (const serverSong of serverSongs) {
+        // Find mobile songs that were deleted from the server
+        const missingSongs = mobileSongs.filter(song =>
+            song.server_id !== undefined &&
+            song.server_id !== null &&
+            !serverIds.has(Number(song.server_id))
+        );
 
-            // Don't download songs deleted by the mobile user
-            if (deletedIds.includes(serverSong.id)) continue;
+        // Remove deleted cloud songs from mobile IndexedDB
+        if (missingSongs.length > 0) {
 
-            const transaction = db.transaction("songs", "readonly");
-            const store = transaction.objectStore("songs");
+            const currentSong = currentIndex >= 0
+                ? songs[currentIndex]
+                : null;
 
-            const allSongs = await new Promise((resolve, reject) => {
+            const currentSongDeleted = currentSong &&
+                missingSongs.some(song => song.id === currentSong.id);
 
-                const request = store.getAll();
+            await new Promise((resolve, reject) => {
 
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
+                const deleteTransaction =
+                    db.transaction("songs", "readwrite");
 
+                const store =
+                    deleteTransaction.objectStore("songs");
+
+                missingSongs.forEach(song => {
+                    store.delete(song.id);
+                    console.log("Removed deleted cloud song:", song.title);
+                });
+
+                deleteTransaction.oncomplete = resolve;
+                deleteTransaction.onerror = () =>
+                    reject(deleteTransaction.error);
             });
 
-            const alreadyExists = allSongs.some(song =>
-                song.server_id === serverSong.id
+            if (currentSongDeleted) {
+                audio.pause();
+                currentIndex = -1;
+
+                document.getElementById("player-name").textContent =
+                    "Select a song";
+
+                document.getElementById("player-album").textContent =
+                    "Music Player";
+
+                if (playerimg) playerimg.style.display = "none";
+
+                if (playerimgplaceholder) {
+                    playerimgplaceholder.style.display = "flex";
+                }
+            }
+        }
+
+        // Get the remaining mobile songs
+        const remainingSongs = mobileSongs.filter(song =>
+            !missingSongs.some(missing => missing.id === song.id)
+        );
+
+        // Respect songs manually deleted from mobile
+        const deletedTransaction =
+            db.transaction("deletedSongs", "readonly");
+
+        const deletedRequest =
+            deletedTransaction.objectStore("deletedSongs").getAll();
+
+        const deletedSongs = await new Promise((resolve, reject) => {
+            deletedRequest.onsuccess = () =>
+                resolve(deletedRequest.result);
+
+            deletedRequest.onerror = () =>
+                reject(deletedRequest.error);
+        });
+
+        const deletedIds = deletedSongs.map(song =>
+            Number(song.server_id)
+        );
+
+        // Download songs that are new on the server
+        for (const serverSong of serverSongs) {
+
+            if (deletedIds.includes(Number(serverSong.id))) {
+                continue;
+            }
+
+            const alreadyExists = remainingSongs.some(song =>
+                Number(song.server_id) === Number(serverSong.id)
             );
 
             if (alreadyExists) continue;
@@ -108,32 +189,31 @@ async function syncSongsFromServer() {
             const audioBlob = await audioResponse.blob();
 
             const newSong = {
-
                 id: "server_" + serverSong.id,
                 server_id: serverSong.id,
-
                 title: serverSong.title,
                 artist: serverSong.artist,
                 album: serverSong.album,
-
                 pic: "",
                 file: audioBlob
-
             };
 
             await new Promise((resolve, reject) => {
 
-                const saveTransaction = db.transaction("songs", "readwrite");
+                const saveTransaction =
+                    db.transaction("songs", "readwrite");
 
                 saveTransaction.objectStore("songs").put(newSong);
 
                 saveTransaction.oncomplete = resolve;
-                saveTransaction.onerror = () => reject(saveTransaction.error);
 
+                saveTransaction.onerror = () =>
+                    reject(saveTransaction.error);
             });
 
-            console.log("Downloaded:", newSong.title);
+            remainingSongs.push(newSong);
 
+            console.log("Downloaded:", newSong.title);
         }
 
         loadSongs();
@@ -145,8 +225,8 @@ async function syncSongsFromServer() {
         console.error("Sync error:", error);
 
     }
-
 }
+
 
 function renderimages(songArray = songs) {
     if (songcount) {
