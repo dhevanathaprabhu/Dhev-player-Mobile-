@@ -51,6 +51,30 @@ function saveSong(song) {
     store.put(song);
 }
 
+async function getCoverImage(coverUrl) {
+    if (!coverUrl) return "";
+
+    try {
+        const response = await fetch(coverUrl);
+
+        if (!response.ok) return "";
+
+        const blob = await response.blob();
+
+        return await new Promise((resolve) => {
+            const reader = new FileReader();
+
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve("");
+
+            reader.readAsDataURL(blob);
+        });
+
+    } catch (error) {
+        console.error("Cover download failed:", error);
+        return "";
+    }
+}
 
 async function syncSongsFromServer() {
 
@@ -188,13 +212,16 @@ async function syncSongsFromServer() {
 
             const audioBlob = await audioResponse.blob();
 
+            // Download the original album artwork
+            const coverImage = await getCoverImage(serverSong.cover_image);
+
             const newSong = {
                 id: "server_" + serverSong.id,
                 server_id: serverSong.id,
                 title: serverSong.title,
                 artist: serverSong.artist,
                 album: serverSong.album,
-                pic: "",
+                pic: coverImage,
                 file: audioBlob
             };
 
