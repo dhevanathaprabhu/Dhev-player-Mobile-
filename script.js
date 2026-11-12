@@ -84,24 +84,34 @@ async function syncSongsFromServer() {
 
         console.log("Checking server for songs...");
 
-        const response = await fetch(API_URL, {
-            cache: "no-store"
-        });
+        let nextUrl = API_URL;
+        let serverSongs = [];
 
-        if (!response.ok) {
-            throw new Error("Could not connect to Django server");
+        while (nextUrl) {
+            const response = await fetch(nextUrl, {
+                cache: "no-store"
+            });
+
+            if (!response.ok) {
+                throw new Error("Could not connect to Django server");
+            }
+
+            const data = await response.json();
+
+            if (Array.isArray(data)) {
+                serverSongs = data;
+                nextUrl = null;
+            } else {
+                serverSongs.push(...(data.results || []));
+                nextUrl = data.next;
+            }
         }
-
-        const data = await response.json();
-
-        const serverSongs = Array.isArray(data)
-            ? data
-            : data.results;
 
         if (!Array.isArray(serverSongs)) {
             throw new Error("Invalid server song list");
         }
 
+        console.log("Total songs received from server:", serverSongs.length);
         // Get all songs currently saved on mobile
         const transaction = db.transaction("songs", "readonly");
         const request = transaction.objectStore("songs").getAll();
@@ -253,7 +263,6 @@ async function syncSongsFromServer() {
 
     }
 }
-
 
 function renderimages(songArray = songs) {
     if (songcount) {
