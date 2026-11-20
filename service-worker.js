@@ -1,6 +1,5 @@
 
-const CACHE_NAME = "dhev-player-v1";
-
+const CACHE_NAME = "dhev-player-v2";
 const APP_FILES = [
     "./",
     "./index.html",
