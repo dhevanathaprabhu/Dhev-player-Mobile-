@@ -1,7 +1,7 @@
 
 let songs = [];
 let currentSongs = [];
-let selectedComposer = "all";
+let selectedComposer = [];
 let searchText = "";
 let syncInProgress = false;
 let shuffleHistory = [];
