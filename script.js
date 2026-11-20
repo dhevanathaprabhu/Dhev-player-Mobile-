@@ -1436,27 +1436,28 @@ function rendercomposer() {
 
     // Get unique composers
     const composers = [...new Set(
-
         songs
             .map(song => normalizeComposer(song.composer))
             .filter(composer => composer !== "Unknown Composer")
-
     )].sort((a, b) => a.localeCompare(b));
 
-    // Reset selection if composer no longer exists
-    if (
-        selectedComposer !== "all" &&
-        !composers.includes(selectedComposer)
-    ) {
-        selectedComposer = "all";
-    }
+    // Remove composers that no longer exist
+    selectedComposers = selectedComposers.filter(
+        composer => composers.includes(composer)
+    );
 
     // All Composers option
     const all = document.createElement("li");
 
-    all.textContent = "All Composers";
+    all.textContent = selectedComposers.length === 0
+        ? "✓ All Composers"
+        : "All Composers";
+
     all.dataset.composer = "all";
-    all.classList.toggle("selected", selectedComposer === "all");
+
+    if (selectedComposers.length === 0) {
+        all.classList.add("selected");
+    }
 
     options.appendChild(all);
 
@@ -1465,30 +1466,38 @@ function rendercomposer() {
 
         const li = document.createElement("li");
 
-        li.textContent = composer;
+        const isSelected = selectedComposers.includes(composer);
+
+        li.textContent = (isSelected ? "✓ " : "　 ") + composer;
+
         li.dataset.composer = composer;
 
-        li.classList.toggle(
-            "selected",
-            selectedComposer === composer
-        );
+        if (isSelected) {
+            li.classList.add("selected");
+        }
 
         options.appendChild(li);
 
     });
 
-    // Update selected button text
+    // Update dropdown button text
     if (selectedText) {
 
-        selectedText.textContent =
-            selectedComposer === "all"
-                ? "All Composers"
-                : selectedComposer;
+        if (selectedComposers.length === 0) {
+            selectedText.textContent = "All Composers";
+        }
+        else if (selectedComposers.length === 1) {
+            selectedText.textContent = selectedComposers[0];
+        }
+        else {
+            selectedText.textContent =
+                selectedComposers.length + " Composers Selected";
+        }
 
     }
-
 }
 
+// DROPDOWN EVENTS
 
 // DROPDOWN EVENTS
 
@@ -1498,7 +1507,6 @@ const composerOptions = document.querySelector(".custom-options");
 
 if (selectWrapper && composerSelect && composerOptions) {
 
-    // Initially hide dropdown
     composerOptions.style.display = "none";
 
     // Open / close dropdown
@@ -1516,30 +1524,50 @@ if (selectWrapper && composerSelect && composerOptions) {
 
     });
 
-
-    // Select composer
+    // Select multiple composers
     composerOptions.addEventListener("click", function(e) {
 
         const item = e.target.closest("li");
 
         if (!item || !composerOptions.contains(item)) return;
 
-        if (!item.dataset.composer) return;
+        const composer = item.dataset.composer;
 
-        selectedComposer = item.dataset.composer;
+        if (!composer) return;
+
+        // All Composers
+        if (composer === "all") {
+
+            selectedComposers = [];
+
+            rendercomposer();
+            applyComposerFilter();
+
+            composerOptions.style.display = "none";
+            selectWrapper.classList.remove("open");
+
+            return;
+        }
+
+        // Toggle individual composer
+        if (selectedComposers.includes(composer)) {
+
+            selectedComposers =
+                selectedComposers.filter(c => c !== composer);
+
+        } else {
+
+            selectedComposers.push(composer);
+
+        }
 
         rendercomposer();
-
         applyComposerFilter();
 
-        composerOptions.style.display = "none";
-
-        selectWrapper.classList.remove("open");
-
+        // Keep dropdown open for more selections
     });
 
-
-    // Close dropdown when clicking outside
+    // Close when clicking outside
     document.addEventListener("click", function(e) {
 
         if (!selectWrapper.contains(e.target)) {
@@ -1559,20 +1587,19 @@ if (selectWrapper && composerSelect && composerOptions) {
 
 function applyComposerFilter() {
 
-    if (selectedComposer === "all") {
+    if (selectedComposers.length === 0) {
 
         currentSongs = [...songs];
 
     } else {
 
         currentSongs = songs.filter(song =>
-
-            normalizeComposer(song.composer) === selectedComposer
-
+            selectedComposers.includes(
+                normalizeComposer(song.composer)
+            )
         );
 
     }
 
     renderimages(currentSongs);
-
 }
