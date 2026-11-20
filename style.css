@@ -615,6 +615,7 @@
         }
 
         .custom-options {
+            display: none;
             position: absolute;
             top: calc(100% + 8px);
             left: 0;
@@ -641,6 +642,11 @@
         }
 
         .custom-options li:hover {
+            background: #303035;
+            color: #1db954;
+        }
+
+        .custom-options li.selected {
             background: #303035;
             color: #1db954;
         }
